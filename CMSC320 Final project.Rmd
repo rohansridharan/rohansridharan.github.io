@@ -1,0 +1,373 @@
+---
+title: "Analysis of Heart Disease"
+author: "Rohan Sridharan"
+date: "May 14, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE)
+```
+
+##Introduction
+**Central Question:** Which health factors most consistently indicate the presence of heart disease?   
+  
+This tutorial is an analysis of various factors related to heart disease. It includes an in-depth analysis of these factors to understand the relationship between different variables and their correlation to the presence of heart disease. This type of data analysis can be vital for understanding the causes of heart disease and how to predict or prevent it. 
+
+
+##Part 1: Acquiring and Cleaning Data
+Here we imported a dataset with various pieces of information about patients with potential signs of heart disease. The dataset can be found here: https://www.kaggle.com/ronitf/heart-disease-uci  
+
+The list of attributes in this dataset, the values that represent them, and the abbreviations being used are listed here:   
+1. **age**: age   
+2. **sex**: sex (1= male, 0 = female)    
+3. **cp**: chest pain type (Value 1: typical angina, Value 2: atypical angina, Value 3: non-anginal pain, Value 4: asymptomatic)       
+4. **trestbps**: resting blood pressure (mm Hg on admission to the hospital)  
+5. **chol**: serum cholestoral in mg/dl   
+6. **fbs**: fasting blood sugar (> 120 mg/dl, 1 = true; 0 = false)    
+7. **restecq**: resting electrocardiographic results (0 = normal, 1 = having ST-T wave abnormality, 2 = showing probable or definite left ventricular hypertrophy by Estes' criteria)  
+8. **thalach**: maximum heart rate achieved   
+9. **exang**: exercise induced angina (1 = yes; 0 = no)     
+10. **oldpeak**: oldpeak = ST depression induced by exercise relative to rest ('ST' relates to positions on the ECG plot. Learn more here: https://litfl.com/st-segment-ecg-library/)   
+11. **slope**: the slope of the peak exercise ST segment (Value 1: upsloping, Value 2: flat, Value 3: downsloping)  
+12. **ca**: number of major vessels (0-3) colored by flourosopy   
+13. **thal**: A blood disorder called thalassemia (0 = none; 1 = normal; 2 = fixed defect; 3 = reversable defect)   
+14. **target**: diagnosis of heart disease (angiographic disease status) - (0 = no heart disease, 1 = yes heart disease)  
+   
+The first column was originally named "i..age" so we rename it to "age" for cleanliness and consistency.   
+We also check to see if there are any NA values. Our check indicates that there are none.   
+Below we have the first 6 rows of values from the dataset to view the various attributes.
+```{r}
+library(ggplot2)
+library(broom)
+library(dplyr)
+library(DataExplorer)
+library(caret)
+
+data<-read.csv("/Users/rohan/Documents/heart-disease-uci/heart.csv") 
+sum(is.na(data))
+colnames(data)[1]<-"age"
+head(data)
+```
+
+##Part 2: Exploratory Data Analysis
+First we will explore demographic attributes, then explore key risk factor attributes with respect to the demographic attributes, then compare all of these to the target attribute for an in-depth analysis of factors correlated to heart disease.
+      
+According to the CDC, the three key risk factors of heart disease are high cholesterol, high blood pressure, and smoking. Our dataset includes data for cholesterol and blood pressure so will be exploring those factors with respect to other attributes to see if the data supports this information.    
+  
+More can be read about the three key risk factors of heart disease on the CDC website here: https://www.cdc.gov/heartdisease/risk_factors.htm    
+
+As a reminder, the target attribute refers to whether a particular patient has heart disease or not.
+  
+   
+The summary statistics for sex show that there are 97 females and 207 males in the dataset.
+```{r}
+summary_sex <- data %>%
+  mutate(sex = ifelse(sex == 0, 'F', 'M')) 
+
+summary(as.factor(summary_sex$sex))
+```
+       
+**1.** Below we made a basic histogram to visually represent the distribution of age in the dataset. Age distribution appears to be relatively symmetric with an approximate mean of 55 years old. 
+```{r}
+age_dist <- data %>%
+  ggplot(mapping=aes(x=age)) +
+    geom_histogram(bins = 30, fill = "dodgerblue4", color = "grey17") +
+    labs(x = "Age",
+         y = "Number of People") +
+    ggtitle("Age Distribution")
+age_dist
+
+summary(data$age)
+
+```
+
+
+       
+**2.** Now that we have a general understanding of what the distributions for age and sex look like, we can compare them to cholesterol data.     
+Below we have a bar chart comparing mean cholesterol for each sex (comparing mean since there are a different number of males and females in the dataset as seen above). Based on the graph, females have a higher average cholesterol of 261.3 mg/dl while males have a cholesterol of 239.3 mg/dl. Based on cholesterol alone, we can hypothesize that women might be more likely to have heart disease, but we will continue our analysis to verify if this is the case.
+```{r}
+sex_chol <- summary_sex %>%
+  group_by(sex) %>%
+  summarize(Mean_Cholesterol = mean(chol)) %>%
+  ggplot(mapping=aes(x=sex, y=Mean_Cholesterol)) +
+    geom_bar(stat="identity", fill="dodgerblue4") +
+    labs(x= 'Sex') +
+    ggtitle("Mean Cholesterol by Sex") +
+    theme(legend.position = "none") +
+  geom_text(aes(label = Mean_Cholesterol, vjust = 1.6, color = "white"))
+
+sex_chol
+```
+   
+
+**3.** This bar plot below shows mean cholesterol levels by age. While there is variation, there is appears to be a slight upward trend in mean cholesterol as patients get older. The oldest patients (age 77) have the max mean cholesterol of 304 mg/dl. 
+```{r}
+age_chol <- summary_sex %>%
+  group_by(age)%>%
+  summarize(Mean_Cholesterol = mean(chol)) %>%
+  ggplot(mapping=aes(x=age, y=Mean_Cholesterol)) +
+    geom_bar(stat="identity", fill = "dodgerblue4") +
+    labs(x= 'Age', y ='Mean Cholesterol') +
+   theme(legend.position = "none") +
+    ggtitle("Mean Cholesterol by Age") 
+age_chol
+```
+   
+**4.** Similarly, we now compare mean blood pressure by sex on a bar plot, which shows that females have a slightly higher mean resting blood pressure of 133 while males are around 131.
+```{r}
+sex_bp <- summary_sex %>%
+  group_by(sex) %>%
+  summarize(Mean_Blood_Pressure = mean(trestbps)) %>%
+  ggplot(mapping=aes(x=sex, y=Mean_Blood_Pressure)) +
+    geom_bar(stat="identity", fill="maroon") +
+    labs(x= 'Sex') +
+    ggtitle("Mean Blood Pressure by Sex") +
+    theme(legend.position = "none") +
+  geom_text(aes(label = Mean_Blood_Pressure, vjust = 1.6, color = "white"))
+sex_bp
+```
+   
+**5.** This plot below compares blood pressure to age, demonstrating a slight trend of increasing blood pressure as age increases. However, here we see that the patients with the highest mean blood pressure are around the age of 57, with similar averages for patients aged around 70. This contrasts to the cholesterol trend because the oldest patients do not have the highest average blood pressure readings. 
+```{r}
+age_bp <- summary_sex %>%
+  group_by(age)%>%
+  summarize(Mean_Blood_Pressure = mean(trestbps)) %>%
+  ggplot(mapping=aes(x=age, y=Mean_Blood_Pressure)) +
+    geom_bar(stat="identity", fill = "maroon") +
+    labs(x= 'Age', y ='Mean Blood Pressure') +
+   theme(legend.position = "none") +
+    ggtitle("Mean Blood Pressure by Age") 
+age_bp
+```
+
+  
+  
+**6.** In order to see how various attributes correlate more directly to the presence of heart disease, we can now do comparisons of various attributes against the target attribute. 
+First we will compare basic demographic attributes like age and sex to the target. Then compare the risk factor attributes like cholesterol and blood pressure to the target. Finally, we will compare other more specific attributes to target. This will give us a comprehensive picture of how these variables are related.   
+  
+  
+Here we have two density plots on top of eachother for ease of comparison. Using density plots here is advantageous as it allows us to get a better understanding of the distribution shape compared to an ordinary historgram. These density plots display the age distribution of healthy patients and the age distribution of patients with heart disease. The heart disease plot shows that heart disease appears to be spread more evenly across age than the healthy patients. The heart disease plot has two peaks, displaying a greater amount of people with heart disease around age 40 and age 50 with a density of about 0.55. The healthy plot shows a graph slightly skewed to the left, with a peak of healthy patients around age 57 with a density of around 0.82.
+```{r fig.width=10}
+
+age_target <-data %>%
+ mutate(target = ifelse(target == 0, 'Healthy', 'Heart Disease')) %>%
+ggplot(aes(age, fill = as.factor(target))) +
+  geom_histogram(aes(y=..density..),breaks=seq(0, 80, by=1), color="grey17") +
+  geom_density(alpha=.1, fill="black")+
+  facet_wrap(~target, ncol=1,scale="fixed") +
+  scale_fill_manual(values=c("cadetblue3","indianred2"))+
+  xlab("Age") +
+  ylab("Density of Patients") +
+  ggtitle("Age vs. Target")
+
+age_target
+```
+
+**7.** This plot below shows the number of each sex that has heart disease compared to the number of patients of each sex that are healthy. This plot demonstrates that a much larger proportion of female patients have heart disease compared to the proportion of male patients that have heart disease.
+```{r fig.width = 10}
+sex_target <- summary_sex %>%
+mutate(target = ifelse(target == 0, 'Healthy', 'Heart Disease')) %>%
+ggplot(aes(target, fill=as.factor(target))) +
+  geom_bar(stat="count") +
+  facet_wrap(~sex, ncol=2,scale="fixed") +
+  scale_fill_manual(values=c("cadetblue3","indianred2")) +
+  ggtitle("Sex vs. Target")+
+  ylab("Number of Patients")
+sex_target
+```
+  
+**8.** This plot below compares the cholesterol levels of healthy patients to cholesterol levels of heart disease patients. Interestingly, heart disease patients appear to have a slightly lower average cholesterol level of around 225 mg/dl when compared to the average of healthy patients. This contrasts with information provided by the CDC that stated that high cholesterol is a key risk factor for heart disease.
+```{r fig.width = 10}
+chol_target <- data %>%
+mutate(target = ifelse(target == 0, 'Healthy', 'Heart Disease')) %>%
+ggplot(aes(chol, fill=as.factor(target))) +
+  geom_histogram(aes(y=..density..),breaks=seq(100, 600, by=25), color="grey17") +
+  geom_density(alpha=.1, fill="black")+
+  facet_wrap(~target, ncol=1,scale="fixed") +
+  scale_fill_manual(values=c("cadetblue3","indianred2")) +
+  xlab("Cholestoral (mg/dl)") +
+  ylab("Density of Patients") +
+  ggtitle("Cholestoral vs. Target")
+chol_target
+```
+   
+**9.** This density plot below compares the blood pressure between healthy patients and patients with heart disease. This plot shows a relatively similar distribution of blood pressure for both types of patients, again contrasting the original hypothesis based on the CDC report that high blood pressure correlates to heart disease.
+```{r fig.width = 10}
+bp_target <- data %>%
+mutate(target = ifelse(target == 0, 'Healthy', 'Heart Disease')) %>%
+ggplot(aes(trestbps, fill=as.factor(target))) +
+  geom_histogram(aes(y=..density..),breaks=seq(100, 600, by=25), color="grey17") +
+  geom_density(alpha=.1, fill="black")+
+  facet_wrap(~target, ncol=1,scale="fixed") +
+  scale_fill_manual(values=c("cadetblue3","indianred2")) +
+  xlab("Blood Pressure (mmHg)") +
+  ylab("Density of Patients") +
+  ggtitle("Blood Pressure vs. Target")
+bp_target
+```
+    
+     
+**10.** Now we compare other more specific attributes to the target attribute to see which variables correlate to heart disease.   
+This bar plot below shows the number of healthy patients vs. number of heart disease patients with each type of chest pain. Based on the plot, most patients with chest pain type 1 or 2 are diagnosed with heart disease. Patients with chest pain of type 3 are also more likely to have heart disease but the difference between healthy and heart disease patients for this type is less than for type 1 and 2.
+```{r fig.width = 10}
+chest_target <- data %>%
+mutate(target = ifelse(target == 0, 'Healthy', 'Heart Disease')) %>%
+ggplot(aes(as.factor(target), fill=target)) +
+  geom_bar(stat="count") +
+  facet_wrap(~cp, ncol=2,scale="fixed") +
+  scale_fill_manual(values=c("cadetblue3","indianred2"))  +
+  xlab("Target") +
+  ylab("Number of Patients")+
+  ggtitle("Chest Pain vs. Target")
+chest_target
+
+```
+   
+**11.** This plot below compares the number of major vessels in healthy patients vs. heart disease patients. This plot shows that almost all heart disease patients have no major vessels open, indicating that the fewer major vessels strongly correlates to heart disease.
+```{r fig.width = 10}
+vessel_target <- data %>%
+  mutate(target = ifelse(target == 0, 'Healthy', 'Heart Disease')) %>%
+ggplot(aes(ca, fill=as.factor(target))) +
+  geom_histogram(aes(y=..density..),breaks=seq(0, 5, by=1), color="grey17") +
+  geom_density(alpha=.1, fill="black")+
+  facet_wrap(~target, ncol=1,scale="fixed") +
+  scale_fill_manual(values=c("cadetblue3","indianred2")) +
+  ggtitle("Number of Major Vessels vs Target") +
+  xlab("Number of Major Vessels (0-3)") +
+  ylab("Density of Patients")
+vessel_target
+```
+   
+**12.** This plot below shows the number of healthy vs heart disease patients that had each level of resting ECG readings. This plot shows that most people who have a level 1 reading based on the analysis of the ECG, meaning they have an ST-T wave abnormality, tend to have heart disease.    
+As mentioned before, resting electrocardiographic readings are as follows: 0 = normal, 1 = having ST-T wave abnormality, 2 = showing probable or definite left ventricular hypertrophy.   
+For more information on what an ECG does and why it is used, click here: https://www.heart.org/en/health-topics/heart-attack/diagnosing-a-heart-attack/electrocardiogram-ecg-or-ekg   
+For more information on ST wave abnormalities, click here: https://ecg.utah.edu/lesson/10
+```{r fig.width = 10}
+ECG_target <- data %>%
+mutate(target = ifelse(target == 0, 'Healthy', 'Heart Disease')) %>%
+ggplot(aes(target, fill=as.factor(target))) +
+  geom_bar(stat="count") +
+  facet_wrap(~restecg, ncol=3,scale="fixed") +
+  scale_fill_manual(values=c("cadetblue3","indianred2")) +
+  ggtitle("Resting ECG vs Target") +
+  ylab("Number of Patients")
+ECG_target
+```
+   
+     
+   
+**13.** This plot below compares number of healthy vs. heart disease patients for both patients who experience exercise induced angina and non-exercise induced angina. The plot shows that patients who experience no exercise induced angina are much more likely to have heart disease. 
+
+Angina  is a type of chest pain that reduces blood flow to the heart. For more information on angina, click here: https://www.heart.org/en/health-topics/heart-attack/angina-chest-pain
+```{r fig.width = 10}
+angina_target <- data %>%
+mutate(target = ifelse(target == 0, 'Healthy', 'Heart Disease')) %>%  
+mutate(exang = ifelse(exang == 0, 'No exercise induced angina', 'Exercise induced angina')) %>%  
+ggplot(aes(target, fill=as.factor(target))) +
+  geom_bar(stat="count") +
+  facet_wrap(~exang, ncol=1,scale="fixed") +
+  scale_fill_manual(values=c("cadetblue3","indianred2")) +
+  ylab("Number of Patients") +
+  ggtitle("Exercise induced angina vs Target") 
+angina_target
+```
+    
+     
+**14.** This plot below compares the number of healthy and heart disease patients for each diagnosis of Thalassemia. This plot shows that patients with fixed defect thalassemia are very likely to have a heart disease of some kind.   
+Thalassemia is a blood disorder that results in the body not producing enough hemoglobin. For more information on the disorder and its various types, click here: https://www.cdc.gov/ncbddd/thalassemia/facts.html
+```{r fig.width = 10}
+thal_target <- data %>%
+mutate(target = ifelse(target == 0, 'Healthy', 'Heart Disease')) %>%   
+mutate(thal = ifelse(thal == 0, 'No Thalassemia', ifelse(thal == 1, 'Normal Thalassemia', ifelse(thal == 2, "Fixed Defect Thalassemia", ifelse(thal==3, 'Reversable Defect Thalassemia', NA))))) %>%  
+ggplot(aes(target, fill=as.factor(target))) +
+  geom_bar(stat="count") +
+  facet_wrap(~thal, ncol=2,scale="fixed") +
+  scale_fill_manual(values=c("cadetblue3","indianred2")) +
+  ggtitle("Thalassemia vs. Target") +
+  ylab("Number of Patients")
+thal_target
+```
+  
+  
+##Part 3: Attribute Correlation
+
+Here we construct a correlation matrix in order to visually see the relationship between different attributes from the dataset. We are checking to see how these values compare to our conclusions from the exploratory data analysis above.  
+  
+According to the matrix, chest pain, heart rate, and slope of peak ST segment are the features with the strongest positive correlation to heart disease. Exercise-induced angina, exercise-induced ST segment depression, number of major vessels, and thalassemia are all features with the strongest negative correlation. This confirms the analysis from our visualizations above which demonstrated that many of these attributes are strongly related to heart disease. This matrix also confirms our conclusion from the data analysis above that blood pressure and cholesterol are not very strongly correlated to heart disease based on this data.   
+  
+For more information on the use of a correlation matrix and how to interpret it, click here: https://www.displayr.com/what-is-a-correlation-matrix/
+```{r fig.width = 10}
+numeric.var = sapply(data, as.numeric)
+corr.matrix = cor(numeric.var)
+plot_correlation(corr.matrix)
+```
+   
+   
+
+##Part 4: Logistic Regression and Random Forest Modeling
+
+Now we can further analyze the data using logistic regression tactics. We use logistic regression here since the dependent variable, 'target', is a catagorical variable with values of either 0 or 1. This analysis will help use determine which attributes significantly impact the likelihood of heart disease. After developing the model with all the attributes (factoring the categorical attributes), we tidy it in order to see all the values and understand which are the most significant.  
+  
+Our null hypothesis is: All attributes (respectively) have no impact on whether a patient has heart disease or not.   
+  
+After conducting the logistic regression, we see that the P value for several attributes is relatively small, suggesting that they significantly impact the target attribute. Assuming a rejection threshold of 0.01, then the P values for attributes like sex (female), chest pain (type 2 and 3), and number of major vessels (count of 1 and 2) are the most statistically significant and allow us to reject the null hypothesis.
+```{r}
+heart_data<- data
+glm.mod = glm(target ~ age + factor(sex) + factor(cp) + trestbps + chol + factor(fbs) +
+                factor(restecg) + thalach + factor(exang) + oldpeak + factor(slope) +
+                factor(thal) + factor(ca), data = heart_data, 
+              family = binomial(link = "logit"))
+tidy(glm.mod)
+```
+ 
+   
+Here we build a random forest model to further enhance our predictions on the dataset. First we prepare the data by factoring any categorical variables, then we partition the data into trainer data and validator data. Afterwards, we establish the target as the classifier for the random forest, and build the formula to be put into the random forest model. Based on the plot of the model itself we see the beyond a thousand trees, the rate of error stays relatively constant.
+```{r}
+library(randomForest)
+#Data preparation
+data_copy<-data
+data_copy$sex<-as.factor(data_copy$sex)
+data_copy$cp<-as.factor(data_copy$cp)
+data_copy$fbs<-as.factor(data_copy$fbs)
+data_copy$exang<-as.factor(data_copy$exang)
+data_copy$restecg<-as.factor(data_copy$restecg)
+data_copy$slope<-as.factor(data_copy$slope)
+data_copy$thal<-as.factor(data_copy$thal)
+
+#Data Partition
+samp_index <- sample(2, nrow(data_copy), replace = T, prob = c(0.6,0.4))
+trainer <- data_copy[samp_index == 1,]
+validator <- data_copy[samp_index == 2,]
+
+#Classifier
+data_copy$target <- as.factor(data_copy$target)
+
+#Formula
+attributes <- names(data_copy)
+attributes <- attributes[!attributes %in% c("target")]
+attributes1 <- paste(attributes, collapse = "+") #saves the column names separated by +
+formula_rf <- as.formula(paste("target", attributes1, sep = " ~ "))
+
+#Model
+model_rf <- randomForest(formula_rf, trainer, ntree = 1000, importance = TRUE)
+plot(model_rf)
+
+```
+   
+   
+The next step is to build an importance table based on this random forest model in order to see which attributes are the most significant. According to the table, chest pain, number of major vessels, and thalassemia are the most important attributes in terms of signficance towards heart disease. 
+```{r}
+variable_imp <- importance(model_rf, type=2)
+knitr::kable((round(variable_imp, digits=2)))
+```
+
+##Part 5: Conclusion  
+ 
+From each stage of our analysis, we gathered insights on which attributes relate to the presence of heart disease the most. From the exploratory data analysis stage, our visualizations demonstrated that type 2 and 3 chest pain, fixed defect thalassemia, female sex, type 1 resting ECG, small number of major vessels, and non-exercise induced angina were all correlated to the presence of heart disease. The logistic regression model confimed some of these attributes, demonstrating that type 2 and 3 chest pain, small number of major vessels, and female sex were the most statistically significant attributes relative to the presence of heart disease. Each of these attributes had high correlation to the target according to the correlation matrix constructed. The importance table constructed from the random forest model also depicts chest pain and number of vessels to be the most important attributes along with thalassemia.   
+  
+Ultimately, type 2 chest pain (atypical angina) seems to be the most consistent attribute to indicate the presence of heart disease among all these models. Other notable indicators include small number of major vessels and fixed defect thalassemia. And heart disease appears to be the most common among females.
+
+These insights based on this particular dataset disagree with the inital hypothesis that cholesterol and blood pressure would be the strongest indicators of heart disease. While the CDC's report linked above likely has evidence to support the notion that they are key risk factors, this data does not reflect that they are the most consistent indicators of heart disease.   
+
+Understanding the various attributes that could be correlated to heart disease is vital for diagnosing and predicting the presence of it among patients. Exploratory data analysis, correlation analysis, logistic regression and random forest modeling are powerful data science tools that can help recognize such patterns and help patients who are predisposed to heart disease. 
